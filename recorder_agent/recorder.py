@@ -15,9 +15,6 @@ from .audio_device import AudioDeviceError, resolve_device
 
 log = logging.getLogger(__name__)
 
-# Marker suffix while a chunk is still being written
-_PARTIAL_SUFFIX = ".part"
-
 
 class Recorder:
     """Record audio from ALSA device in chunks using ffmpeg segment muxer."""
@@ -61,7 +58,6 @@ class Recorder:
         self._kill_ffmpeg()
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=10)
-        self._finalize_partial_files()
 
     def _run_loop(self) -> None:
         """Continuously start ffmpeg; restart on crash/mic-disconnect."""
@@ -78,8 +74,8 @@ class Recorder:
             reconnect_delay = 2.0
             self._outbox.mkdir(parents=True, exist_ok=True)
 
-            # segment pattern: chunk_20240115_080000.ogg.part
-            segment_pattern = str(self._outbox / "chunk_%Y%m%d_%H%M%S.ogg" + _PARTIAL_SUFFIX)
+            # segment pattern: chunk_20240115_080000.ogg
+            segment_pattern = str(self._outbox / "chunk_%Y%m%d_%H%M%S.ogg")
 
             cmd = [
                 "ffmpeg", "-hide_banner", "-nostdin",
@@ -116,16 +112,7 @@ class Recorder:
             )
             stderr_thread.start()
 
-            # Also run a thread that renames completed .part files to .ogg
-            rename_thread = threading.Thread(
-                target=self._rename_completed_parts, daemon=True
-            )
-            rename_thread.start()
-
             returncode = self._process.wait()
-
-            # Finalize any remaining .part files after ffmpeg exits
-            self._finalize_partial_files()
 
             if not self._running:
                 log.info("ffmpeg_stopped_gracefully", extra={"returncode": returncode})
@@ -146,34 +133,6 @@ class Recorder:
                 continue
             level = logging.WARNING if "error" in line.lower() else logging.DEBUG
             log.log(level, "ffmpeg_stderr", extra={"line": line})
-
-    def _rename_completed_parts(self) -> None:
-        """Periodically rename .part files that are no longer being written to."""
-        while self._running and self._process and self._process.poll() is None:
-            self._do_rename_pass()
-            time.sleep(2)
-
-    def _do_rename_pass(self) -> None:
-        """Rename .ogg.part files to .ogg if they are older than chunk_seconds."""
-        cutoff = time.time() - (self._chunk_seconds + 5)
-        for part_file in sorted(self._outbox.glob(f"*{_PARTIAL_SUFFIX}")):
-            try:
-                if part_file.stat().st_mtime < cutoff:
-                    final_name = part_file.with_name(part_file.name.replace(_PARTIAL_SUFFIX, ""))
-                    part_file.rename(final_name)
-                    log.info("chunk_ready", extra={"file": final_name.name})
-            except OSError as exc:
-                log.debug("rename_part_error", extra={"file": part_file.name, "error": str(exc)})
-
-    def _finalize_partial_files(self) -> None:
-        """Rename all remaining .part files after recording stops."""
-        for part_file in sorted(self._outbox.glob(f"*{_PARTIAL_SUFFIX}")):
-            try:
-                final_name = part_file.with_name(part_file.name.replace(_PARTIAL_SUFFIX, ""))
-                part_file.rename(final_name)
-                log.info("chunk_finalized", extra={"file": final_name.name})
-            except OSError as exc:
-                log.warning("finalize_error", extra={"file": part_file.name, "error": str(exc)})
 
     def _kill_ffmpeg(self) -> None:
         proc = self._process

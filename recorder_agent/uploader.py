@@ -102,9 +102,21 @@ class Uploader:
                     break  # restart the scan after backoff
 
     def _pending_chunks(self) -> list[Path]:
-        """Return completed .ogg chunks sorted oldest first."""
+        """Return completed .ogg chunks sorted oldest first.
+
+        A chunk is considered complete if its mtime is older than chunk_seconds + 10s,
+        meaning ffmpeg has moved on to recording the next segment.
+        """
+        cutoff = time.time() - (self._chunk_seconds + 10)
         try:
-            return sorted(self._outbox.glob("chunk_*.ogg"))
+            chunks = []
+            for f in self._outbox.glob("chunk_*.ogg"):
+                try:
+                    if f.stat().st_mtime < cutoff:
+                        chunks.append(f)
+                except OSError:
+                    pass
+            return sorted(chunks)
         except OSError:
             return []
 
