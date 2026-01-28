@@ -1,0 +1,29 @@
+[Unit]
+Description=Recorder Agent — chunked audio capture & upload
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=recorder-agent
+Group=audio
+EnvironmentFile=-/etc/recorder-agent/env
+ExecStart=/opt/recorder-agent/venv/bin/python -m recorder_agent -c /etc/recorder-agent/config.yaml
+Restart=always
+RestartSec=5
+WatchdogSec=120
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/recorder-agent
+PrivateTmp=true
+
+# Logging — goes to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=recorder-agent
+
+[Install]
+WantedBy=multi-user.target

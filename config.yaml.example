@@ -1,0 +1,38 @@
+# recorder-agent configuration
+# Copy to /etc/recorder-agent/config.yaml and edit.
+# Every key can also be set via environment variable with RA_ prefix
+# (e.g. RA_POINT_ID, RA_INGEST_TOKEN).
+
+identifiers:
+  point_id: "00000000-0000-0000-0000-000000000001"
+  register_id: "00000000-0000-0000-0000-000000000002"
+  device_id: "00000000-0000-0000-0000-000000000003"
+
+ingest:
+  ingest_base_url: "https://audio.example.com"
+  ingest_token: "your-bearer-token-here"
+
+schedule:
+  schedule_start: "08:00"
+  schedule_end: "22:00"
+
+recording:
+  chunk_seconds: 60
+  opus_bitrate_kbps: 24
+  sample_rate: 48000
+  # ALSA device — leave empty for auto-detect (first USB mic).
+  # Run 'arecord -l' to see available devices.
+  # Examples: "hw:1,0", "hw:2,0", "plughw:1,0"
+  audio_device: ""
+
+spool:
+  spool_dir: "/var/lib/recorder-agent/spool"
+  max_spool_days: 7
+  max_spool_gb: 20
+
+retry:
+  retry_min_s: 2
+  retry_max_s: 300
+
+health:
+  health_port: 8042

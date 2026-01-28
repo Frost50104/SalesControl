@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recorder-agent"
+version = "1.0.0"
+description = "Chunked audio capture & upload agent for Raspberry Pi"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31,<3",
+    "PyYAML>=6,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "responses>=0.23",
+]
+
+[project.scripts]
+recorder-agent = "recorder_agent.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
