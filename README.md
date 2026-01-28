@@ -1,3 +1,146 @@
+# SalesControl Audio System
+
+Система непрерывной записи и обработки аудио для точек продаж.
+
+## Компоненты
+
+| Компонент | Описание | Документация |
+|-----------|----------|--------------|
+| **recorder-agent** | Сервис записи на Raspberry Pi | [README ниже](#recorder-agent) |
+| **ingest-api** | API приёма аудио-чанков | [ingest_api/README.md](ingest_api/README.md) |
+| **infra** | Docker Compose для деплоя | [infra/](#инфраструктура) |
+
+## Архитектура системы
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Raspberry Pi                                   │
+│  ┌─────────────┐     ┌──────────────┐     ┌──────────────┐                 │
+│  │ USB Mic     │────>│ recorder-    │────>│   outbox/    │                 │
+│  │ (ALSA)      │     │ agent        │     │  .ogg files  │                 │
+│  └─────────────┘     │ (ffmpeg)     │     └──────┬───────┘                 │
+│                      └──────────────┘            │                          │
+│                                                  │ HTTP POST                │
+└──────────────────────────────────────────────────┼──────────────────────────┘
+                                                   │
+                                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                               Server                                        │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐                │
+│  │ ingest-api   │────>│  PostgreSQL  │     │    Redis     │                │
+│  │ (FastAPI)    │     │  (metadata)  │     │   (queue)    │                │
+│  └──────┬───────┘     └──────────────┘     └──────────────┘                │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌──────────────┐                                                          │
+│  │ File Storage │  /var/lib/ingest_api/audio/<point>/<register>/<date>/    │
+│  │ (audio files)│                                                          │
+│  └──────────────┘                                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Быстрый старт
+
+### 1. Развернуть сервер (ingest-api)
+
+```bash
+cd infra
+cp .env.example .env
+# Отредактировать .env (особенно ADMIN_TOKEN!)
+
+docker compose up -d
+```
+
+### 2. Зарегистрировать устройство
+
+```bash
+# Сгенерировать идентификаторы
+POINT_ID=$(uuidgen)
+REGISTER_ID=$(uuidgen)
+DEVICE_ID=$(uuidgen)
+DEVICE_TOKEN="$(openssl rand -hex 24)"
+
+# Создать устройство через Admin API
+curl -X POST http://your-server:8000/api/v1/admin/devices \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"point_id\": \"$POINT_ID\",
+    \"register_id\": \"$REGISTER_ID\",
+    \"device_id\": \"$DEVICE_ID\",
+    \"token_plain\": \"$DEVICE_TOKEN\"
+  }"
+
+echo "Device Token: $DEVICE_TOKEN"
+```
+
+### 3. Настроить Raspberry Pi (recorder-agent)
+
+```bash
+# На Raspberry Pi
+sudo apt install -y python3-venv ffmpeg alsa-utils
+
+cd /opt
+sudo mkdir -p recorder-agent && sudo chown $USER: recorder-agent
+# Скопировать файлы проекта...
+
+cd /opt/recorder-agent
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+
+# Конфигурация
+sudo mkdir -p /etc/recorder-agent
+sudo nano /etc/recorder-agent/config.yaml
+```
+
+```yaml
+# /etc/recorder-agent/config.yaml
+identifiers:
+  point_id: "<POINT_ID из шага 2>"
+  register_id: "<REGISTER_ID из шага 2>"
+  device_id: "<DEVICE_ID из шага 2>"
+
+ingest:
+  ingest_base_url: "http://your-server:8000"
+  ingest_token: "<DEVICE_TOKEN из шага 2>"
+```
+
+```bash
+# Запуск
+sudo systemctl enable --now recorder-agent
+```
+
+---
+
+## Инфраструктура
+
+### Docker Compose (infra/)
+
+```bash
+cd infra
+cp .env.example .env
+docker compose up -d
+```
+
+Сервисы:
+- **ingest-api** — FastAPI на порту 8000
+- **postgres** — PostgreSQL 16
+- **redis** — Redis 7 (для очереди обработки)
+- **migrations** — one-shot контейнер для Alembic
+
+### Переменные окружения
+
+| Переменная | По умолчанию | Описание |
+|------------|--------------|----------|
+| `ADMIN_TOKEN` | `changeme-admin-token` | Токен для Admin API |
+| `POSTGRES_USER` | `ingest` | Пользователь БД |
+| `POSTGRES_PASSWORD` | `ingest` | Пароль БД |
+| `AUDIO_STORAGE_PATH` | `./audio_storage` | Путь хранения аудио |
+
+---
+
 # recorder-agent
 
 Сервис непрерывной записи аудио с USB-микрофона для Raspberry Pi.
@@ -44,9 +187,8 @@ tests/
     test_spool.py        — 6 тестов ротации хранилища
     test_uploader.py     — 11 тестов очереди загрузки
 
-config.yaml.example      — пример конфигурации
-.env.example              — пример переменных окружения
-recorder-agent.service    — systemd unit file
+ingest_api/              — сервер приёма чанков (FastAPI)
+infra/                   — Docker Compose для деплоя сервера
 ```
 
 ## Установка
@@ -231,33 +373,10 @@ Content-Type: multipart/form-data
 Поля: point_id, register_id, device_id, start_ts, end_ts, codec, sample_rate, channels
 Файл: chunk_file (audio/ogg)
 
-Ответ 200: {"status": "ok", "chunk_id": "..."}
+Ответ 200: {"status": "ok", "chunk_id": "...", "stored_path": "...", "queued": true}
 ```
 
-## Архитектура
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Scheduler   │────>│   Recorder   │────>│   outbox/    │
-│ (main loop)  │     │   (ffmpeg)   │     │  .ogg files  │
-└──────────────┘     └──────────────┘     └──────┬───────┘
-                                                 │
-                     ┌──────────────┐            │
-                     │   Uploader   │<───────────┘
-                     │  (HTTP POST) │──────> Ingest API
-                     └──────┬───────┘
-                            │ при успехе
-                     ┌──────▼───────┐
-                     │  uploaded/   │
-                     │  .ogg files  │
-                     └──────┬───────┘
-                            │
-                     ┌──────▼───────┐
-                     │ SpoolJanitor │──> удаление старых / лишних
-                     └──────────────┘
-```
-
-### Потоки (threads)
+## Потоки (threads)
 
 | Поток | Назначение |
 |-------|------------|
@@ -267,7 +386,7 @@ Content-Type: multipart/form-data
 | **spool-janitor** | Каждые 5 мин удаляет файлы старше `max_spool_days` и сверх `max_spool_gb` |
 | **health** | HTTP-сервер на `127.0.0.1:health_port` |
 
-### Обработка сбоев
+## Обработка сбоев
 
 | Ситуация | Поведение |
 |----------|-----------|
