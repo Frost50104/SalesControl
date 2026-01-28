@@ -1,0 +1,5 @@
+# Environment file with secrets
+.env
+
+# Audio storage directory
+audio_storage/

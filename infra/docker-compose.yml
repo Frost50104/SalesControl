@@ -1,0 +1,113 @@
+version: "3.9"
+
+services:
+  # ==========================================================================
+  # Ingest API - Audio chunk ingestion service
+  # ==========================================================================
+  ingest-api:
+    build:
+      context: ../ingest_api
+      dockerfile: Dockerfile
+    container_name: ingest-api
+    restart: unless-stopped
+    ports:
+      - "${INGEST_API_PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ingest}:${POSTGRES_PASSWORD:-ingest}@postgres:5432/${POSTGRES_DB:-ingest}
+      - REDIS_URL=redis://redis:6379/0
+      - AUDIO_STORAGE_DIR=/data/audio
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-changeme-admin-token}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_UPLOAD_SIZE_BYTES=${MAX_UPLOAD_SIZE_BYTES:-10485760}
+    volumes:
+      - audio_storage:/data/audio
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - salescontrol
+
+  # ==========================================================================
+  # PostgreSQL Database
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ingest-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-ingest}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ingest}
+      - POSTGRES_DB=${POSTGRES_DB:-ingest}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ingest} -d ${POSTGRES_DB:-ingest}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - salescontrol
+
+  # ==========================================================================
+  # Redis - Queue and caching
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ingest-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - salescontrol
+
+  # ==========================================================================
+  # Database Migrations (one-shot)
+  # ==========================================================================
+  migrations:
+    build:
+      context: ../ingest_api
+      dockerfile: Dockerfile
+    container_name: ingest-migrations
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ingest}:${POSTGRES_PASSWORD:-ingest}@postgres:5432/${POSTGRES_DB:-ingest}
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - salescontrol
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  audio_storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${AUDIO_STORAGE_PATH:-./audio_storage}
+
+networks:
+  salescontrol:
+    driver: bridge
