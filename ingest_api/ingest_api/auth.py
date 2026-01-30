@@ -141,3 +141,47 @@ def verify_admin_token(
         )
 
     logger.debug("admin_auth_success")
+
+
+def verify_internal_token(
+    authorization: str | None = Header(None, alias="Authorization"),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    """
+    Dependency to verify internal service token.
+
+    Used for inter-service communication (e.g., asr_worker fetching chunks).
+    Raises HTTPException 401 if authentication fails or token not configured.
+    """
+    if not settings.internal_token:
+        logger.error("internal_token_not_configured")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Internal endpoint not configured",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization scheme",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = authorization[7:]
+    if not secrets.compare_digest(token, settings.internal_token):
+        logger.warning("internal_auth_failed")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid internal token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    logger.debug("internal_auth_success")

@@ -2,8 +2,10 @@
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID, uuid4
 
+import aiofiles
 from fastapi import (
     APIRouter,
     Depends,
@@ -14,6 +16,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +25,7 @@ from .auth import (
     authenticate_device,
     hash_token,
     verify_admin_token,
+    verify_internal_token,
 )
 from .db import get_session
 from .models import AudioChunk, Device
@@ -384,4 +388,84 @@ async def health_check() -> HealthResponse:
         db=db_ok,
         storage_writable=storage_ok,
         time=datetime.now(timezone.utc),
+    )
+
+
+# =============================================================================
+# Internal Endpoints (for inter-service communication)
+# =============================================================================
+
+
+async def _stream_file(file_path: Path, chunk_size: int = 64 * 1024):
+    """Async generator to stream file content."""
+    async with aiofiles.open(file_path, "rb") as f:
+        while chunk := await f.read(chunk_size):
+            yield chunk
+
+
+@router.get(
+    "/api/v1/internal/chunks/{chunk_id}/file",
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Chunk not found"},
+    },
+    dependencies=[Depends(verify_internal_token)],
+)
+async def download_chunk_file(
+    chunk_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> StreamingResponse:
+    """
+    Download audio chunk file (internal endpoint).
+
+    Used by asr_worker to fetch chunks for transcription.
+    Requires INTERNAL_TOKEN authentication.
+    """
+    # Fetch chunk from database
+    result = await session.execute(
+        select(AudioChunk).where(AudioChunk.chunk_id == chunk_id)
+    )
+    chunk = result.scalar_one_or_none()
+
+    if not chunk:
+        logger.warning(
+            "internal_chunk_not_found",
+            extra={"chunk_id": str(chunk_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chunk not found",
+        )
+
+    # Build full file path
+    base_dir = Path(settings.audio_storage_dir)
+    file_path = base_dir / chunk.file_path
+
+    if not file_path.exists():
+        logger.error(
+            "internal_chunk_file_missing",
+            extra={"chunk_id": str(chunk_id), "file_path": str(file_path)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chunk file not found on disk",
+        )
+
+    logger.info(
+        "internal_chunk_download",
+        extra={
+            "chunk_id": str(chunk_id),
+            "file_size": chunk.file_size_bytes,
+        },
+    )
+
+    # Stream the file
+    return StreamingResponse(
+        _stream_file(file_path),
+        media_type="audio/ogg",
+        headers={
+            "Content-Disposition": f'attachment; filename="chunk_{chunk_id}.ogg"',
+            "Content-Length": str(chunk.file_size_bytes),
+        },
     )

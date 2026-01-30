@@ -303,3 +303,70 @@ class TestAdminEndpoints:
         )
 
         assert response.status_code == 404
+
+
+class TestInternalChunkDownload:
+    """Tests for GET /api/v1/internal/chunks/{chunk_id}/file endpoint."""
+
+    async def test_download_chunk_401_no_token(
+        self,
+        client: AsyncClient,
+        chunk_with_file: tuple,
+    ):
+        """Missing Authorization header returns 401."""
+        chunk, _ = chunk_with_file
+
+        response = await client.get(
+            f"/api/v1/internal/chunks/{chunk.chunk_id}/file",
+        )
+
+        assert response.status_code == 401
+        assert "Missing Authorization header" in response.json()["detail"]
+
+    async def test_download_chunk_401_invalid_token(
+        self,
+        client: AsyncClient,
+        chunk_with_file: tuple,
+    ):
+        """Invalid internal token returns 401."""
+        chunk, _ = chunk_with_file
+
+        response = await client.get(
+            f"/api/v1/internal/chunks/{chunk.chunk_id}/file",
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+
+        assert response.status_code == 401
+        assert "Invalid internal token" in response.json()["detail"]
+
+    async def test_download_chunk_200_with_valid_token(
+        self,
+        client: AsyncClient,
+        chunk_with_file: tuple,
+        internal_token: str,
+    ):
+        """Valid token and chunk_id returns 200 with file content."""
+        chunk, audio_content = chunk_with_file
+
+        response = await client.get(
+            f"/api/v1/internal/chunks/{chunk.chunk_id}/file",
+            headers={"Authorization": f"Bearer {internal_token}"},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "audio/ogg"
+        assert response.content == audio_content
+
+    async def test_download_chunk_404_nonexistent(
+        self,
+        client: AsyncClient,
+        internal_token: str,
+    ):
+        """Non-existent chunk_id returns 404."""
+        response = await client.get(
+            f"/api/v1/internal/chunks/{uuid4()}/file",
+            headers={"Authorization": f"Bearer {internal_token}"},
+        )
+
+        assert response.status_code == 404
+        assert "Chunk not found" in response.json()["detail"]

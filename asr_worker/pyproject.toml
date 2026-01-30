@@ -1,0 +1,40 @@
+[project]
+name = "asr-worker"
+version = "1.0.0"
+description = "ASR Worker - Speech recognition with faster-whisper for SalesControl"
+requires-python = ">=3.11"
+
+dependencies = [
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "asyncpg>=0.29,<1",
+    "pydantic>=2.5,<3",
+    "pydantic-settings>=2.1,<3",
+    "faster-whisper>=1.0,<2",
+    "pydub>=0.25,<1",
+    "httpx>=0.27,<1",
+    "aiofiles>=23.0,<25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "pytest-asyncio>=0.23,<1",
+    "pytest-cov>=4.1,<5",
+    "aiosqlite>=0.19,<1",
+    "respx>=0.21,<1",
+]
+
+[project.scripts]
+asr-worker = "asr_worker.main:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["asr_worker*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

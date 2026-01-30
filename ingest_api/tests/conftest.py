@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import (
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["AUDIO_STORAGE_DIR"] = "/tmp/ingest_api_test"
 os.environ["ADMIN_TOKEN"] = "test-admin-token"
+os.environ["INTERNAL_TOKEN"] = "test-internal-token"
 
 from ingest_api.auth import hash_token
 from ingest_api.db import get_session
@@ -119,3 +120,52 @@ async def registered_device(
     await session.commit()
     await session.refresh(device)
     return device
+
+
+@pytest.fixture
+def internal_token() -> str:
+    """Get internal service token."""
+    return "test-internal-token"
+
+
+@pytest.fixture
+async def chunk_with_file(
+    session: AsyncSession,
+    registered_device: Device,
+    device_ids: dict,
+    tmp_path,
+) -> tuple:
+    """Create a chunk record with an actual file on disk."""
+    from datetime import datetime, timezone
+    from ingest_api.models import AudioChunk
+
+    chunk_id = uuid4()
+    audio_content = b"OggS" + os.urandom(1000)
+
+    # Create directory structure
+    relative_path = f"audio/{device_ids['point_id']}/{device_ids['register_id']}/2026-01-30/10/chunk_20260130_100000_{chunk_id}.ogg"
+    full_path = tmp_path / relative_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_bytes(audio_content)
+
+    # Create database record
+    chunk = AudioChunk(
+        chunk_id=chunk_id,
+        device_id=device_ids["device_id"],
+        point_id=device_ids["point_id"],
+        register_id=device_ids["register_id"],
+        start_ts=datetime(2026, 1, 30, 10, 0, 0, tzinfo=timezone.utc),
+        end_ts=datetime(2026, 1, 30, 10, 1, 0, tzinfo=timezone.utc),
+        duration_sec=60,
+        codec="opus",
+        sample_rate=48000,
+        channels=1,
+        file_path=relative_path,
+        file_size_bytes=len(audio_content),
+        status="QUEUED",
+    )
+    session.add(chunk)
+    await session.commit()
+    await session.refresh(chunk)
+
+    return chunk, audio_content

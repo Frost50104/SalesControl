@@ -17,6 +17,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - AUDIO_STORAGE_DIR=/data/audio
       - ADMIN_TOKEN=${ADMIN_TOKEN:-changeme-admin-token}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - MAX_UPLOAD_SIZE_BYTES=${MAX_UPLOAD_SIZE_BYTES:-10485760}
     volumes:
@@ -134,10 +135,62 @@ services:
     networks:
       - salescontrol
 
+  # ==========================================================================
+  # ASR Worker - Speech Recognition (runs on separate VPS)
+  # ==========================================================================
+  # NOTE: This service is designed to run on a separate VPS with CPU resources.
+  # It connects to the core PostgreSQL and fetches audio via HTTP from ingest-api.
+  # Include this in your compose file on the ASR VPS, pointing to core services.
+  asr-worker:
+    build:
+      context: ../asr_worker
+      dockerfile: Dockerfile
+    container_name: asr-worker
+    restart: unless-stopped
+    environment:
+      # Database - connects to core PostgreSQL (use external host when running on separate VPS)
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ingest}:${POSTGRES_PASSWORD:-ingest}@${ASR_DB_HOST:-postgres}:5432/${POSTGRES_DB:-ingest}
+      # Ingest API internal endpoint (use external host when running on separate VPS)
+      - INGEST_INTERNAL_BASE_URL=http://${ASR_INGEST_HOST:-ingest-api}:8000
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN}
+      # Whisper settings
+      - WHISPER_MODEL_FAST=${WHISPER_MODEL_FAST:-base}
+      - WHISPER_MODEL_ACCURATE=${WHISPER_MODEL_ACCURATE:-small}
+      - WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE:-int8}
+      - WHISPER_THREADS=${WHISPER_THREADS:-8}
+      - WHISPER_CACHE_DIR=/models
+      - BEAM_SIZE=${BEAM_SIZE:-5}
+      - LANGUAGE=${WHISPER_LANGUAGE:-ru}
+      # Heuristics
+      - AVG_LOGPROB_THRESHOLD=${AVG_LOGPROB_THRESHOLD:--0.7}
+      - MIN_TEXT_LENGTH_RATIO=${MIN_TEXT_LENGTH_RATIO:-0.5}
+      - MIN_DURATION_FOR_ACCURATE=${MIN_DURATION_FOR_ACCURATE:-15.0}
+      # Worker settings
+      - POLL_INTERVAL_SEC=${ASR_POLL_INTERVAL_SEC:-5.0}
+      - BATCH_SIZE=${ASR_BATCH_SIZE:-5}
+      - ASR_STUCK_TIMEOUT_SEC=${ASR_STUCK_TIMEOUT_SEC:-600}
+      - ASR_RECOVERY_INTERVAL_SEC=${ASR_RECOVERY_INTERVAL_SEC:-60}
+      - METRICS_LOG_INTERVAL_SEC=${METRICS_LOG_INTERVAL_SEC:-60}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Temp storage
+      - AUDIO_TMP_DIR=/tmp/asr_worker
+    volumes:
+      # Model cache - persist downloaded Whisper models
+      - whisper_models:/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - salescontrol
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  whisper_models:
     driver: local
   audio_storage:
     driver: local

@@ -8,6 +8,8 @@
 |-----------|----------|--------------|
 | **recorder-agent** | Сервис записи на Raspberry Pi | [README ниже](#recorder-agent) |
 | **ingest-api** | API приёма аудио-чанков | [ingest_api/README.md](ingest_api/README.md) |
+| **vad-worker** | VAD и построение диалогов | [vad_worker/](vad_worker/) |
+| **asr-worker** | Распознавание речи (Whisper) | [asr_worker/README.md](asr_worker/README.md) |
 | **infra** | Docker Compose для деплоя | [infra/](#инфраструктура) |
 
 ## Архитектура системы
@@ -25,17 +27,30 @@
                                                    │
                                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                               Server                                        │
+│                           Core Server                                       │
 │  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐                │
-│  │ ingest-api   │────>│  PostgreSQL  │     │    Redis     │                │
-│  │ (FastAPI)    │     │  (metadata)  │     │   (queue)    │                │
-│  └──────┬───────┘     └──────────────┘     └──────────────┘                │
-│         │                                                                   │
-│         ▼                                                                   │
-│  ┌──────────────┐                                                          │
-│  │ File Storage │  /var/lib/ingest_api/audio/<point>/<register>/<date>/    │
-│  │ (audio files)│                                                          │
-│  └──────────────┘                                                          │
+│  │ ingest-api   │────>│  PostgreSQL  │<────│  vad-worker  │                │
+│  │ (FastAPI)    │     │  (metadata)  │     │  (webrtcvad) │                │
+│  └──────┬───────┘     └──────┬───────┘     └──────────────┘                │
+│         │                    │                                              │
+│         ▼                    │                                              │
+│  ┌──────────────┐            │  Tables: audio_chunks, dialogues,           │
+│  │ File Storage │            │          speech_segments, dialogue_segments, │
+│  │ (audio files)│            │          dialogue_transcripts               │
+│  └──────────────┘            │                                              │
+└──────────────────────────────┼──────────────────────────────────────────────┘
+                               │
+                               │ PostgreSQL + HTTP (internal endpoint)
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           ASR Server (отдельный VPS)                        │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                        asr-worker                                     │  │
+│  │  ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌────────────┐   │  │
+│  │  │ fetch ogg  │──>│ assemble   │──>│ transcribe │──>│   save     │   │  │
+│  │  │ via HTTP   │   │ audio      │   │ (whisper)  │   │ transcript │   │  │
+│  │  └────────────┘   └────────────┘   └────────────┘   └────────────┘   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -129,15 +144,49 @@ docker compose up -d
 - **postgres** — PostgreSQL 16
 - **redis** — Redis 7 (для очереди обработки)
 - **migrations** — one-shot контейнер для Alembic
+- **vad-worker** — VAD и построение диалогов
+- **asr-worker** — распознавание речи (может запускаться на отдельном VPS)
 
 ### Переменные окружения
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
 | `ADMIN_TOKEN` | `changeme-admin-token` | Токен для Admin API |
+| `INTERNAL_TOKEN` | *(пусто)* | Токен для internal API (asr-worker) |
 | `POSTGRES_USER` | `ingest` | Пользователь БД |
 | `POSTGRES_PASSWORD` | `ingest` | Пароль БД |
 | `AUDIO_STORAGE_PATH` | `./audio_storage` | Путь хранения аудио |
+
+### Развертывание ASR Worker на отдельном VPS
+
+1. На core сервере включите INTERNAL_TOKEN:
+```bash
+# infra/.env
+INTERNAL_TOKEN=your-secret-internal-token
+docker compose up -d ingest-api
+```
+
+2. На ASR VPS создайте compose файл:
+```yaml
+version: "3.9"
+services:
+  asr-worker:
+    image: asr-worker:latest
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://ingest:ingest@core-host:5432/ingest
+      - INGEST_INTERNAL_BASE_URL=http://core-host:8000
+      - INTERNAL_TOKEN=your-secret-internal-token
+    volumes:
+      - models:/models
+volumes:
+  models:
+```
+
+3. Проверьте результат:
+```sql
+SELECT dialogue_id, asr_status, asr_pass FROM dialogues WHERE asr_status = 'DONE';
+SELECT dt.text FROM dialogue_transcripts dt LIMIT 5;
+```
 
 ---
 

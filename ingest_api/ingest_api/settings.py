@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Admin token for device management
     admin_token: str = "changeme-admin-token"
 
+    # Internal token for inter-service communication (asr_worker -> ingest_api)
+    internal_token: str = ""
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
