@@ -9,12 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy and install dependencies
+# Copy application code first (needed for pip install)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-
-# Copy application code
 COPY asr_worker/ ./asr_worker/
+
+# Install dependencies
+RUN pip install --no-cache-dir .
 
 # Create directories
 RUN mkdir -p /tmp/asr_worker/chunks /models

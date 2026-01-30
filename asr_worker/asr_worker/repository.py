@@ -160,7 +160,7 @@ async def upsert_dialogue_transcript(
         INSERT INTO dialogue_transcripts
             (dialogue_id, language, text, segments_json, avg_logprob, no_speech_prob)
         VALUES
-            (:dialogue_id, :language, :text, :segments_json::jsonb, :avg_logprob, :no_speech_prob)
+            (:dialogue_id, :language, :text, CAST(:segments_json AS jsonb), :avg_logprob, :no_speech_prob)
         ON CONFLICT (dialogue_id) DO UPDATE SET
             language = EXCLUDED.language,
             text = EXCLUDED.text,
