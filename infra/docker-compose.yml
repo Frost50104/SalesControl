@@ -185,6 +185,44 @@ services:
     networks:
       - salescontrol
 
+  # ==========================================================================
+  # Analysis Worker - LLM-based upsell analysis
+  # ==========================================================================
+  analysis-worker:
+    build:
+      context: ../analysis_worker
+      dockerfile: Dockerfile
+    container_name: analysis-worker
+    restart: unless-stopped
+    environment:
+      # Database - connects to core PostgreSQL
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-ingest}:${POSTGRES_PASSWORD:-ingest}@postgres:5432/${POSTGRES_DB:-ingest}
+      # OpenAI API settings
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_TIMEOUT_SEC=${OPENAI_TIMEOUT_SEC:-60.0}
+      - OPENAI_MAX_RETRIES=${OPENAI_MAX_RETRIES:-3}
+      # Prompt versioning
+      - PROMPT_VERSION=${PROMPT_VERSION:-v1}
+      # Prefilter settings
+      - PREFILTER_ENABLED=${PREFILTER_ENABLED:-true}
+      - PREFILTER_MIN_TEXT_LEN=${PREFILTER_MIN_TEXT_LEN:-10}
+      - PREFILTER_MIN_DURATION_SEC=${PREFILTER_MIN_DURATION_SEC:-6.0}
+      # Worker settings
+      - POLL_INTERVAL_SEC=${ANALYSIS_POLL_INTERVAL_SEC:-5.0}
+      - BATCH_SIZE=${ANALYSIS_BATCH_SIZE:-10}
+      - ANALYSIS_STUCK_TIMEOUT_SEC=${ANALYSIS_STUCK_TIMEOUT_SEC:-600}
+      - ANALYSIS_RECOVERY_INTERVAL_SEC=${ANALYSIS_RECOVERY_INTERVAL_SEC:-60}
+      - METRICS_LOG_INTERVAL_SEC=${METRICS_LOG_INTERVAL_SEC:-60}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - salescontrol
+
 volumes:
   postgres_data:
     driver: local
