@@ -80,9 +80,9 @@ class Recorder:
             cmd = [
                 "ffmpeg", "-hide_banner", "-nostdin",
                 "-f", "alsa",
+                "-channels", "1",
+                "-sample_rate", str(self._sample_rate),
                 "-i", alsa_id,
-                "-ac", "1",
-                "-ar", str(self._sample_rate),
                 "-c:a", "libopus",
                 "-b:a", self._bitrate,
                 "-vn",

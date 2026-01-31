@@ -201,7 +201,6 @@ export function getExportUrl(
   format: 'csv' | 'json' = 'json'
 ): string {
   const baseUrl = getBaseUrl();
-  const token = getToken();
   return `${baseUrl}/api/v1/exports/reviews?from=${dateFrom}&to=${dateTo}&format=${format}`;
 }
 

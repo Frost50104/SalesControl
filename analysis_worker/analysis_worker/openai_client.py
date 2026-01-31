@@ -141,31 +141,34 @@ def _call_with_structured_output(
     user_prompt: str,
 ) -> tuple[dict[str, Any], str | None]:
     """
-    Call OpenAI Responses API with structured output (json_schema).
+    Call OpenAI Chat Completions API with structured output (json_schema).
 
     Returns (parsed_json, x_request_id).
     """
-    response = client.responses.create(
+    response = client.chat.completions.create(
         model=model,
-        input=[
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        text=get_schema_for_responses_api(),
+        response_format=get_schema_for_responses_api(),
+        temperature=0.3,
     )
 
     x_request_id = _extract_request_id(response)
 
     # Extract text content from response
-    output_text = response.output_text
+    content = response.choices[0].message.content
+    if not content:
+        raise ValueError("Empty response from LLM")
 
     try:
-        result = json.loads(output_text)
+        result = json.loads(content)
         return result, x_request_id
     except json.JSONDecodeError as e:
         logger.error(
             "Failed to parse JSON from structured output",
-            extra={"error": str(e), "output": output_text[:500]},
+            extra={"error": str(e), "content": content[:500]},
         )
         raise ValueError(f"Invalid JSON in response: {e}")
 

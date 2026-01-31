@@ -61,7 +61,7 @@ export default function QualityChart({ distribution }: QualityChartProps) {
             cx="50%"
             cy="50%"
             labelLine={false}
-            label={({ name, percent }) =>
+            label={({ percent }) =>
               percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''
             }
             outerRadius={80}
