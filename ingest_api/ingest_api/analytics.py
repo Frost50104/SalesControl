@@ -393,3 +393,150 @@ async def get_dialogues_with_analysis(
         total=total,
         dialogues=dialogues,
     )
+
+
+# =============================================================================
+# Additional endpoints for dashboard
+# =============================================================================
+
+
+class PointInfo(BaseModel):
+    """Information about a sales point."""
+
+    point_id: UUID
+    name: str | None = None
+    dialogue_count: int
+
+
+class PointsResponse(BaseModel):
+    """List of points."""
+
+    points: list[PointInfo]
+
+
+class DialogueDetailResponse(BaseModel):
+    """Detailed dialogue information including full transcript."""
+
+    dialogue_id: UUID
+    point_id: UUID
+    register_id: UUID
+    start_ts: datetime
+    end_ts: datetime
+
+    # Analysis
+    quality_score: int
+    attempted: str
+    categories: list[str]
+    customer_reaction: str
+    closing_question: bool
+    summary: str
+    evidence_quotes: list[str]
+    confidence: float | None
+
+    # Review status
+    review_status: str = "NONE"
+
+    # Transcript
+    text: str
+
+
+@router.get(
+    "/points",
+    response_model=PointsResponse,
+    dependencies=[Depends(verify_admin_token)],
+)
+async def get_points(
+    days: int = Query(30, ge=1, le=365, description="Look back N days for points"),
+    session: AsyncSession = Depends(get_session),
+) -> PointsResponse:
+    """
+    Get list of sales points with dialogue counts.
+
+    Returns distinct point_ids from dialogues within the last N days.
+    """
+    query = text("""
+        SELECT
+            d.point_id,
+            COUNT(*) as dialogue_count
+        FROM dialogues d
+        WHERE d.start_ts >= NOW() - INTERVAL ':days days'
+        GROUP BY d.point_id
+        ORDER BY dialogue_count DESC
+    """.replace(":days", str(days)))
+
+    result = await session.execute(query)
+    rows = result.fetchall()
+
+    points = [
+        PointInfo(
+            point_id=row.point_id,
+            name=None,  # No names stored currently
+            dialogue_count=row.dialogue_count,
+        )
+        for row in rows
+    ]
+
+    return PointsResponse(points=points)
+
+
+@router.get(
+    "/dialogues/{dialogue_id}",
+    response_model=DialogueDetailResponse,
+    dependencies=[Depends(verify_admin_token)],
+)
+async def get_dialogue_detail(
+    dialogue_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> DialogueDetailResponse:
+    """
+    Get detailed information about a specific dialogue.
+
+    Includes full transcript text and analysis with evidence quotes.
+    """
+    query = text("""
+        SELECT
+            d.dialogue_id,
+            d.point_id,
+            d.register_id,
+            d.start_ts,
+            d.end_ts,
+            d.review_status,
+            dua.quality_score,
+            dua.attempted,
+            dua.categories,
+            dua.customer_reaction,
+            dua.closing_question,
+            dua.summary,
+            dua.evidence_quotes,
+            dua.confidence,
+            dt.text
+        FROM dialogues d
+        JOIN dialogue_upsell_analysis dua ON d.dialogue_id = dua.dialogue_id
+        LEFT JOIN dialogue_transcripts dt ON d.dialogue_id = dt.dialogue_id
+        WHERE d.dialogue_id = :dialogue_id
+    """)
+
+    result = await session.execute(query, {"dialogue_id": dialogue_id})
+    row = result.fetchone()
+
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Dialogue not found")
+
+    return DialogueDetailResponse(
+        dialogue_id=row.dialogue_id,
+        point_id=row.point_id,
+        register_id=row.register_id,
+        start_ts=row.start_ts,
+        end_ts=row.end_ts,
+        quality_score=row.quality_score,
+        attempted=row.attempted,
+        categories=row.categories if isinstance(row.categories, list) else [],
+        customer_reaction=row.customer_reaction,
+        closing_question=row.closing_question,
+        summary=row.summary,
+        evidence_quotes=row.evidence_quotes if isinstance(row.evidence_quotes, list) else [],
+        confidence=row.confidence,
+        review_status=row.review_status or "NONE",
+        text=row.text or "",
+    )

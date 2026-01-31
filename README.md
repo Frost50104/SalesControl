@@ -10,6 +10,8 @@
 | **ingest-api** | API приёма аудио-чанков | [ingest_api/README.md](ingest_api/README.md) |
 | **vad-worker** | VAD и построение диалогов | [vad_worker/](vad_worker/) |
 | **asr-worker** | Распознавание речи (Whisper) | [asr_worker/README.md](asr_worker/README.md) |
+| **analysis-worker** | LLM-анализ допродаж | [analysis_worker/](analysis_worker/) |
+| **dashboard-web** | Web UI для аналитики | [dashboard_web/README.md](dashboard_web/README.md) |
 | **infra** | Docker Compose для деплоя | [infra/](#инфраструктура) |
 
 ## Архитектура системы
@@ -146,6 +148,8 @@ docker compose up -d
 - **migrations** — one-shot контейнер для Alembic
 - **vad-worker** — VAD и построение диалогов
 - **asr-worker** — распознавание речи (может запускаться на отдельном VPS)
+- **analysis-worker** — LLM-анализ допродаж (требует OPENAI_API_KEY)
+- **dashboard-web** — Web UI на порту 8080
 
 ### Переменные окружения
 
@@ -156,6 +160,37 @@ docker compose up -d
 | `POSTGRES_USER` | `ingest` | Пользователь БД |
 | `POSTGRES_PASSWORD` | `ingest` | Пароль БД |
 | `AUDIO_STORAGE_PATH` | `./audio_storage` | Путь хранения аудио |
+| `OPENAI_API_KEY` | *(пусто)* | API ключ OpenAI для analysis-worker |
+| `DASHBOARD_PORT` | `8080` | Порт для dashboard-web |
+
+### Dashboard Web (UI аналитики)
+
+Dashboard — web-интерфейс для просмотра аналитики допродаж.
+
+**Быстрый старт:**
+
+```bash
+cd infra
+docker compose up -d dashboard-web
+```
+
+**Открыть UI:** http://localhost:8080
+
+**Авторизация:**
+1. Откройте http://localhost:8080
+2. Введите URL API (по умолчанию `http://localhost:8000`)
+3. Введите ADMIN_TOKEN из вашего .env файла
+4. Нажмите "Войти"
+
+Токен хранится только в sessionStorage браузера и не включён в сборку.
+
+**Возможности Dashboard:**
+- **Обзор** — сводные показатели за день: количество диалогов, попытки допродаж, среднее качество
+- **Графики** — динамика по часам, топ категорий предложений, распределение качества
+- **Диалоги** — список с фильтрацией по дате, точке, попытке допродажи, качеству
+- **Детали** — полный текст диалога, анализ LLM, подсветка цитат-доказательств
+
+**Таймзона:** Europe/Belgrade (отображается в UI локальное время)
 
 ### Развертывание ASR Worker на отдельном VPS
 
