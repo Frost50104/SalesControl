@@ -141,6 +141,18 @@ cp .env.example .env
 docker compose up -d
 ```
 
+### Остановка проекта
+
+```bash
+cd infra
+
+# Остановить все контейнеры (данные сохраняются)
+docker compose down
+
+# Остановить с удалением всех данных (PostgreSQL, Redis, аудио)
+docker compose down -v
+```
+
 Сервисы:
 - **ingest-api** — FastAPI на порту 8000
 - **postgres** — PostgreSQL 16
