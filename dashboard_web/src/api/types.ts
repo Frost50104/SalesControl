@@ -176,3 +176,39 @@ export interface RerunResponse {
   message: string;
   previous_analysis_archived: boolean;
 }
+
+// User management types
+export interface UserResponse {
+  user_id: string;
+  username: string;
+  full_name: string;
+  is_admin: boolean;
+  is_active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: UserResponse;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  full_name: string;
+  is_admin: boolean;
+}
+
+export interface UpdateUserRequest {
+  full_name?: string;
+  password?: string;
+  is_admin?: boolean;
+  is_active?: boolean;
+}

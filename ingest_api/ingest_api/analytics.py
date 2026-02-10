@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .auth import verify_admin_token
+from .auth import get_current_user
 from .db import get_session
 
 logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ class DialogueListResponse(BaseModel):
 @router.get(
     "/daily",
     response_model=DailyAnalyticsResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def get_daily_analytics(
     date: date = Query(..., description="Date in YYYY-MM-DD format"),
@@ -294,7 +294,7 @@ async def get_daily_analytics(
 @router.get(
     "/dialogues",
     response_model=DialogueListResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def get_dialogues_with_analysis(
     date: date = Query(..., description="Date in YYYY-MM-DD format"),
@@ -443,7 +443,7 @@ class DialogueDetailResponse(BaseModel):
 @router.get(
     "/points",
     response_model=PointsResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def get_points(
     days: int = Query(30, ge=1, le=365, description="Look back N days for points"),
@@ -482,7 +482,7 @@ async def get_points(
 @router.get(
     "/dialogues/{dialogue_id}",
     response_model=DialogueDetailResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def get_dialogue_detail(
     dialogue_id: UUID,

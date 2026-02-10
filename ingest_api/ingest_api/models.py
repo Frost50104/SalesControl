@@ -59,6 +59,30 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    """Dashboard user account."""
+
+    __tablename__ = "users"
+
+    user_id: Mapped[PyUUID] = mapped_column(GUID(), primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    full_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (Index("ix_users_username", "username"),)
+
+    def __repr__(self) -> str:
+        return f"<User {self.username} admin={self.is_admin}>"
+
+
 class Device(Base):
     """Registered device that can upload audio chunks."""
 

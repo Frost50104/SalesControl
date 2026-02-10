@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .auth import verify_admin_token
+from .auth import get_current_user
 from .db import get_session
 
 logger = logging.getLogger(__name__)
@@ -127,7 +127,7 @@ class ExportFormat(str, Enum):
 @router.post(
     "/reviews/{dialogue_id}",
     response_model=ReviewResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def create_review(
     dialogue_id: UUID,
@@ -190,7 +190,7 @@ async def create_review(
 @router.get(
     "/reviews",
     response_model=ReviewListResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def list_reviews(
     date_from: date | None = Query(None, alias="date", description="Filter by date"),
@@ -299,7 +299,7 @@ async def list_reviews(
 @router.patch(
     "/reviews/{review_id}",
     response_model=ReviewResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def update_review(
     review_id: UUID,
@@ -351,7 +351,7 @@ async def update_review(
 @router.post(
     "/analysis/rerun/{dialogue_id}",
     response_model=RerunResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def rerun_analysis(
     dialogue_id: UUID,
@@ -455,7 +455,7 @@ async def rerun_analysis(
 
 @router.get(
     "/exports/reviews",
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def export_reviews(
     date_from: date = Query(..., alias="from", description="Start date"),

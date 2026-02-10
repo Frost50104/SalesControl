@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .auth import (
     authenticate_device,
     hash_token,
-    verify_admin_token,
+    get_current_user,
     verify_internal_token,
 )
 from .db import get_session
@@ -241,7 +241,7 @@ async def upload_chunk(
     "/api/v1/admin/devices",
     response_model=DeviceResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def create_device(
     req: DeviceCreateRequest,
@@ -290,7 +290,7 @@ async def create_device(
 @router.get(
     "/api/v1/admin/devices",
     response_model=list[DeviceResponse],
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def list_devices(
     session: AsyncSession = Depends(get_session),
@@ -317,7 +317,7 @@ async def list_devices(
 @router.patch(
     "/api/v1/admin/devices/{device_id}",
     response_model=DeviceResponse,
-    dependencies=[Depends(verify_admin_token)],
+    dependencies=[Depends(get_current_user)],
 )
 async def update_device(
     device_id: UUID,

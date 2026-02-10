@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Internal token for inter-service communication (asr_worker -> ingest_api)
     internal_token: str = ""
 
+    # JWT settings for user authentication
+    jwt_secret_key: str = "changeme-jwt-secret-key-min-32-chars"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_hours: int = 24
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000

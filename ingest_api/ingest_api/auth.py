@@ -3,18 +3,27 @@
 import hashlib
 import logging
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session
-from .models import Device
+from .models import Device, User
 from .settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# HTTP Bearer security scheme for JWT
+security = HTTPBearer()
 
 
 def hash_token(token: str) -> str:
@@ -185,3 +194,172 @@ def verify_internal_token(
         )
 
     logger.debug("internal_auth_success")
+
+
+# ==============================================================================
+# Password hashing functions
+# ==============================================================================
+
+
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash."""
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+# ==============================================================================
+# JWT token functions
+# ==============================================================================
+
+
+def create_access_token(
+    data: dict,
+    settings: Settings,
+    expires_delta: timedelta | None = None,
+) -> str:
+    """Create a JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(hours=24)
+
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    return encoded_jwt
+
+
+def decode_access_token(token: str, settings: Settings) -> dict | None:
+    """Decode and validate a JWT access token."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
+        return payload
+    except JWTError:
+        return None
+
+
+# ==============================================================================
+# User authentication functions
+# ==============================================================================
+
+
+async def get_user_by_username(
+    session: AsyncSession,
+    username: str,
+) -> User | None:
+    """Find user by username."""
+    result = await session.execute(select(User).where(User.username == username))
+    return result.scalar_one_or_none()
+
+
+async def authenticate_user(
+    session: AsyncSession,
+    username: str,
+    password: str,
+) -> User | None:
+    """Authenticate user by username and password."""
+    user = await get_user_by_username(session, username)
+    if not user:
+        return None
+    if not user.is_active:
+        return None
+    if not verify_password(password, user.password_hash):
+        return None
+    return user
+
+
+async def update_user_last_login(
+    session: AsyncSession,
+    user_id: UUID,
+) -> None:
+    """Update user last_login_at timestamp."""
+    await session.execute(
+        update(User)
+        .where(User.user_id == user_id)
+        .values(last_login_at=datetime.now(timezone.utc))
+    )
+    await session.commit()
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    """
+    Dependency to get current authenticated user from JWT token.
+
+    Raises HTTPException 401 if authentication fails.
+    """
+    token = credentials.credentials
+    payload = decode_access_token(token, settings)
+
+    if payload is None:
+        logger.warning("jwt_decode_failed")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id_str: str | None = payload.get("sub")
+    if user_id_str is None:
+        logger.warning("jwt_missing_sub")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        user_id = UUID(user_id_str)
+    except ValueError:
+        logger.warning("jwt_invalid_user_id")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    result = await session.execute(select(User).where(User.user_id == user_id))
+    user = result.scalar_one_or_none()
+
+    if user is None or not user.is_active:
+        logger.warning("jwt_user_not_found_or_inactive", extra={"user_id": str(user_id)})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    logger.debug("user_auth_success", extra={"user_id": str(user.user_id)})
+    return user
+
+
+async def get_current_admin_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Dependency to ensure current user is an admin.
+
+    Raises HTTPException 403 if user is not an admin.
+    """
+    if not current_user.is_admin:
+        logger.warning("admin_access_denied", extra={"user_id": str(current_user.user_id)})
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

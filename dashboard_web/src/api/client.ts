@@ -1,4 +1,4 @@
-import { getToken, getBaseUrl } from '../auth/tokenStore';
+import { getToken, getBaseUrl, setToken, setBaseUrl } from '../auth/tokenStore';
 import type {
   DailyAnalyticsResponse,
   DialogueListResponse,
@@ -10,6 +10,11 @@ import type {
   RerunResponse,
   ReviewReason,
   ReviewStatus,
+  LoginRequest,
+  LoginResponse,
+  UserResponse,
+  CreateUserRequest,
+  UpdateUserRequest,
 } from './types';
 
 class ApiError extends Error {
@@ -202,6 +207,71 @@ export function getExportUrl(
 ): string {
   const baseUrl = getBaseUrl();
   return `${baseUrl}/api/v1/exports/reviews?from=${dateFrom}&to=${dateTo}&format=${format}`;
+}
+
+// User management API functions
+export async function login(
+  baseUrl: string,
+  credentials: LoginRequest
+): Promise<LoginResponse> {
+  const url = `${baseUrl}/api/v1/auth/login`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const errorData = await response.json();
+      message = errorData.detail || message;
+    } catch {
+      // ignore JSON parse error
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  const data: LoginResponse = await response.json();
+
+  // Store token and base URL
+  setToken(data.access_token);
+  setBaseUrl(baseUrl);
+
+  return data;
+}
+
+export async function getCurrentUser(): Promise<UserResponse> {
+  return fetchApi<UserResponse>('/api/v1/users/me');
+}
+
+export async function listUsers(): Promise<UserResponse[]> {
+  return fetchApi<UserResponse[]>('/api/v1/users');
+}
+
+export async function createUser(request: CreateUserRequest): Promise<UserResponse> {
+  return fetchApi<UserResponse>('/api/v1/users', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  });
+}
+
+export async function updateUser(
+  userId: string,
+  request: UpdateUserRequest
+): Promise<UserResponse> {
+  return fetchApi<UserResponse>(`/api/v1/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(request),
+  });
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  await fetchApi<void>(`/api/v1/users/${userId}`, {
+    method: 'DELETE',
+  });
 }
 
 export { ApiError };

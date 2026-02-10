@@ -10,3 +10,14 @@ venv/
 *.ogg.part
 .idea/
 .pytest_cache/
+.deployment_credentials.txt
+
+# Documentation files in root (except main README)
+/*.md
+!README.md
+
+# Deployment logs and configs
+deployment_*.log
+deployment_*.txt
+device_config_*.txt
+.rpi_deploy_config

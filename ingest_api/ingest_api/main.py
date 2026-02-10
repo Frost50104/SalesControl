@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from .api import router
 from .analytics import router as analytics_router
 from .reviews import router as reviews_router
+from .users import router as users_router
 from .db import close_db, get_engine
 from .logging_setup import setup_logging
 from .settings import get_settings
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     app.include_router(router)
     app.include_router(analytics_router)
     app.include_router(reviews_router)
+    app.include_router(users_router)
 
     return app
 

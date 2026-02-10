@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { setToken, setBaseUrl } from '../auth/tokenStore';
-import { checkHealth, validateToken } from '../api/client';
+import { login } from '../api/client';
 
 interface LoginPageProps {
   onLogin: () => void;
 }
 
+// API URL для production сервера
+const API_BASE_URL = 'http://130.49.148.227:8000';
+
 export default function LoginPage({ onLogin }: LoginPageProps) {
-  const [token, setTokenValue] = useState('');
-  const [baseUrl, setBaseUrlValue] = useState('http://localhost:8000');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,37 +19,22 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     setLoading(true);
     setError(null);
 
-    // Normalize URL
-    let normalizedUrl = baseUrl.trim();
-    if (normalizedUrl.endsWith('/')) {
-      normalizedUrl = normalizedUrl.slice(0, -1);
-    }
-
-    // Save credentials temporarily to test
-    setToken(token.trim());
-    setBaseUrl(normalizedUrl);
-
     try {
-      // Check if API is reachable
-      const healthy = await checkHealth();
-      if (!healthy) {
-        setError('API недоступен. Проверьте URL.');
-        setLoading(false);
-        return;
-      }
+      // Login
+      await login(API_BASE_URL, {
+        username: username.trim(),
+        password: password,
+      });
 
-      // Validate token
-      const valid = await validateToken();
-      if (!valid) {
-        setError('Неверный токен (401 Unauthorized)');
-        setLoading(false);
-        return;
-      }
-
+      // Success - token and base URL are already stored by login function
       onLogin();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Неизвестная ошибка';
-      setError(`Ошибка подключения: ${message}`);
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'status' in err && err.status === 401) {
+        setError('Неверный логин или пароль');
+      } else {
+        const message = err instanceof Error ? err.message : 'Неизвестная ошибка';
+        setError(`Ошибка подключения: ${message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -58,43 +45,46 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900">SalesControl</h1>
-          <p className="text-gray-600 mt-2">Введите данные для входа</p>
+          <p className="text-gray-600 mt-2">Вход в систему</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label
-              htmlFor="baseUrl"
+              htmlFor="username"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              URL API
+              Логин
             </label>
             <input
-              type="url"
-              id="baseUrl"
-              value={baseUrl}
-              onChange={(e) => setBaseUrlValue(e.target.value)}
-              placeholder="http://localhost:8000"
+              type="text"
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Введите логин"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               required
+              autoComplete="username"
+              autoFocus
             />
           </div>
 
           <div>
             <label
-              htmlFor="token"
+              htmlFor="password"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Admin Token
+              Пароль
             </label>
             <input
               type="password"
-              id="token"
-              value={token}
-              onChange={(e) => setTokenValue(e.target.value)}
-              placeholder="Введите токен"
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Введите пароль"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               required
+              autoComplete="current-password"
             />
           </div>
 
@@ -130,7 +120,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   />
                 </svg>
-                Проверка...
+                Вход...
               </span>
             ) : (
               'Войти'
@@ -139,7 +129,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         </form>
 
         <p className="mt-6 text-center text-xs text-gray-500">
-          Токен хранится только в sessionStorage браузера
+          SalesControl Dashboard v1.0
         </p>
       </div>
     </div>
