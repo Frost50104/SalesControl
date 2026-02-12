@@ -49,11 +49,11 @@ def detect_usb_device() -> str:
     # prefer USB devices (card_name usually contains "USB")
     for dev in devices:
         if "usb" in dev["card_name"].lower() or "usb" in dev["device_name"].lower():
-            log.info("usb_mic_detected", extra={"alsa_id": dev["alsa_id"], "name": dev["card_name"]})
+            log.info("usb_mic_detected", extra={"alsa_id": dev["alsa_id"], "card_name": dev["card_name"]})
             return dev["alsa_id"]
     if devices:
         dev = devices[0]
-        log.warning("no_usb_mic_found_using_first", extra={"alsa_id": dev["alsa_id"], "name": dev["card_name"]})
+        log.warning("no_usb_mic_found_using_first", extra={"alsa_id": dev["alsa_id"], "card_name": dev["card_name"]})
         return dev["alsa_id"]
     raise AudioDeviceError(
         "No capture devices found. Check that a USB microphone is connected "

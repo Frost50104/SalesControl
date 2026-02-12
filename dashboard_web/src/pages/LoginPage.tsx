@@ -5,8 +5,8 @@ interface LoginPageProps {
   onLogin: () => void;
 }
 
-// API URL для production сервера
-const API_BASE_URL = 'http://130.49.148.227:8000';
+// API URL для production сервера (используем текущий домен через nginx proxy)
+const API_BASE_URL = typeof window !== 'undefined' ? window.location.origin : 'http://72.56.98.70:8080';
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');

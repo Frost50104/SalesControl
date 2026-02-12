@@ -152,7 +152,7 @@ REGISTER_RESPONSE=$(curl -s -X POST "http://$CORE_IP:8000/api/v1/admin/devices" 
         \"device_id\": \"$DEVICE_ID\",
         \"point_id\": \"$POINT_ID\",
         \"register_id\": \"$REGISTER_ID\",
-        \"token\": \"$DEVICE_TOKEN\",
+        \"token_plain\": \"$DEVICE_TOKEN\",
         \"is_enabled\": true
     }")
 
@@ -256,6 +256,15 @@ print_info "Установка recorder-agent..."
 cp -r /tmp/recorder-agent/* /opt/recorder-agent/
 cd /opt/recorder-agent
 
+# Создание правильной структуры (файлы должны быть в подпапке recorder_agent/)
+mkdir -p recorder_agent
+for f in *.py; do
+    [ -f "$f" ] && mv "$f" recorder_agent/
+done
+[ -d "__pycache__" ] && mv __pycache__ recorder_agent/
+# requirements.txt остается в корне
+[ -f "recorder_agent/requirements.txt" ] && cp recorder_agent/requirements.txt .
+
 # Python окружение
 print_info "Настройка Python окружения..."
 python3 -m venv venv > /dev/null 2>&1
@@ -266,38 +275,36 @@ pip install --quiet -r requirements.txt > /dev/null 2>&1
 # Создание конфигурации
 print_info "Создание конфигурации..."
 sudo tee /etc/recorder-agent/config.yaml > /dev/null <<EOFCONFIG
-device_id: "$DEVICE_ID"
+# Идентификаторы
 point_id: "$POINT_ID"
 register_id: "$REGISTER_ID"
+device_id: "$DEVICE_ID"
 
-server:
-  url: "http://$CORE_IP:8000"
-  token: "$DEVICE_TOKEN"
-  timeout_sec: 30
-  retry_initial_sec: 2
-  retry_max_sec: 300
+# Ingest сервер
+ingest_base_url: "http://$CORE_IP:8000"
+ingest_token: "$DEVICE_TOKEN"
 
-recording:
-  schedule_start: "$SCHEDULE_START"
-  schedule_end: "$SCHEDULE_END"
-  chunk_duration_sec: 60
-  codec: "opus"
-  bitrate: "24k"
-  sample_rate: 16000
-  channels: 1
+# Расписание
+schedule_start: "$SCHEDULE_START"
+schedule_end: "$SCHEDULE_END"
 
-storage:
-  spool_dir: "/var/lib/recorder-agent/spool"
-  max_age_days: 7
-  max_size_gb: 20
+# Параметры записи
+chunk_seconds: 60
+opus_bitrate_kbps: 24
+sample_rate: 48000
+audio_device: ""
 
-logging:
-  level: "INFO"
-  format: "json"
+# Хранилище
+spool_dir: "/var/lib/recorder-agent/spool"
+max_spool_days: 7
+max_spool_gb: 20.0
 
-healthcheck:
-  enabled: true
-  port: 8042
+# Retry
+retry_min_s: 2.0
+retry_max_s: 300.0
+
+# Health check
+health_port: 8042
 EOFCONFIG
 
 # Создание systemd сервиса
