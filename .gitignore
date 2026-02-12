@@ -21,3 +21,4 @@ deployment_*.log
 deployment_*.txt
 device_config_*.txt
 .rpi_deploy_config
+.DS_Store
