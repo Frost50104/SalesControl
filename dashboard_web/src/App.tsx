@@ -7,6 +7,7 @@ import OverviewPage from './pages/OverviewPage';
 import DialoguesPage from './pages/DialoguesPage';
 import ReviewsPage from './pages/ReviewsPage';
 import UsersPage from './pages/UsersPage';
+import DevicesPage from './pages/DevicesPage';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -39,6 +40,7 @@ function App() {
           <Route path="/" element={<OverviewPage />} />
           <Route path="/dialogues" element={<DialoguesPage />} />
           <Route path="/reviews" element={<ReviewsPage />} />
+          <Route path="/devices" element={<DevicesPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

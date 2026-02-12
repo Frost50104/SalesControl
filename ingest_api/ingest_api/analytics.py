@@ -84,6 +84,10 @@ class DialogueAnalysisSummary(BaseModel):
     dialogue_id: UUID
     start_ts: datetime
     end_ts: datetime
+    point_id: UUID
+    point_name: str | None = None
+    register_id: UUID
+    register_name: str | None = None
     quality_score: int
     attempted: str
     categories: list[str]
@@ -354,6 +358,10 @@ async def get_dialogues_with_analysis(
             d.dialogue_id,
             d.start_ts,
             d.end_ts,
+            d.point_id,
+            p.name as point_name,
+            d.register_id,
+            r.name as register_name,
             dua.quality_score,
             dua.attempted,
             dua.categories,
@@ -364,6 +372,8 @@ async def get_dialogues_with_analysis(
         FROM dialogues d
         JOIN dialogue_upsell_analysis dua ON d.dialogue_id = dua.dialogue_id
         LEFT JOIN dialogue_transcripts dt ON d.dialogue_id = dt.dialogue_id
+        LEFT JOIN points p ON d.point_id = p.point_id
+        LEFT JOIN registers r ON d.register_id = r.register_id
         WHERE {where_clause}
         ORDER BY d.start_ts DESC
         LIMIT :limit OFFSET :offset
@@ -376,6 +386,10 @@ async def get_dialogues_with_analysis(
             dialogue_id=row.dialogue_id,
             start_ts=row.start_ts,
             end_ts=row.end_ts,
+            point_id=row.point_id,
+            point_name=row.point_name,
+            register_id=row.register_id,
+            register_name=row.register_name,
             quality_score=row.quality_score,
             attempted=row.attempted,
             categories=row.categories if isinstance(row.categories, list) else [],
@@ -419,7 +433,9 @@ class DialogueDetailResponse(BaseModel):
 
     dialogue_id: UUID
     point_id: UUID
+    point_name: str | None = None
     register_id: UUID
+    register_name: str | None = None
     start_ts: datetime
     end_ts: datetime
 
@@ -457,10 +473,12 @@ async def get_points(
     query = text("""
         SELECT
             d.point_id,
+            p.name as point_name,
             COUNT(*) as dialogue_count
         FROM dialogues d
+        LEFT JOIN points p ON d.point_id = p.point_id
         WHERE d.start_ts >= NOW() - INTERVAL ':days days'
-        GROUP BY d.point_id
+        GROUP BY d.point_id, p.name
         ORDER BY dialogue_count DESC
     """.replace(":days", str(days)))
 
@@ -470,7 +488,7 @@ async def get_points(
     points = [
         PointInfo(
             point_id=row.point_id,
-            name=None,  # No names stored currently
+            name=row.point_name,
             dialogue_count=row.dialogue_count,
         )
         for row in rows
@@ -497,7 +515,9 @@ async def get_dialogue_detail(
         SELECT
             d.dialogue_id,
             d.point_id,
+            p.name as point_name,
             d.register_id,
+            r.name as register_name,
             d.start_ts,
             d.end_ts,
             d.review_status,
@@ -513,6 +533,8 @@ async def get_dialogue_detail(
         FROM dialogues d
         JOIN dialogue_upsell_analysis dua ON d.dialogue_id = dua.dialogue_id
         LEFT JOIN dialogue_transcripts dt ON d.dialogue_id = dt.dialogue_id
+        LEFT JOIN points p ON d.point_id = p.point_id
+        LEFT JOIN registers r ON d.register_id = r.register_id
         WHERE d.dialogue_id = :dialogue_id
     """)
 
@@ -526,7 +548,9 @@ async def get_dialogue_detail(
     return DialogueDetailResponse(
         dialogue_id=row.dialogue_id,
         point_id=row.point_id,
+        point_name=row.point_name,
         register_id=row.register_id,
+        register_name=row.register_name,
         start_ts=row.start_ts,
         end_ts=row.end_ts,
         quality_score=row.quality_score,

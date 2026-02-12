@@ -52,7 +52,9 @@ export interface DailyAnalyticsResponse {
 export interface DialogueAnalysisSummary {
   dialogue_id: string;
   point_id?: string;
+  point_name?: string;
   register_id?: string;
+  register_name?: string;
   start_ts: string;
   end_ts: string;
   quality_score: number;
@@ -74,7 +76,9 @@ export interface DialogueListResponse {
 export interface DialogueDetail {
   dialogue_id: string;
   point_id: string;
+  point_name?: string;
   register_id: string;
+  register_name?: string;
   start_ts: string;
   end_ts: string;
 
@@ -211,4 +215,16 @@ export interface UpdateUserRequest {
   password?: string;
   is_admin?: boolean;
   is_active?: boolean;
+}
+
+// Device management types
+export interface Device {
+  device_id: string;
+  point_id: string;
+  point_name?: string;
+  register_id: string;
+  register_name?: string;
+  is_enabled: boolean;
+  created_at: string;
+  last_seen_at: string | null;
 }

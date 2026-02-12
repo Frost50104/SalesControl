@@ -30,6 +30,9 @@ export default function Header({ onLogout }: HeaderProps) {
               <NavLink to="/reviews" className={linkClass}>
                 Проверка
               </NavLink>
+              <NavLink to="/devices" className={linkClass}>
+                Устройства
+              </NavLink>
               <NavLink to="/users" className={linkClass}>
                 Пользователи
               </NavLink>

@@ -147,6 +147,9 @@ export default function DialoguesTable({
                 Время
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Точка / Касса
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Длит.
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -175,6 +178,12 @@ export default function DialoguesTable({
               >
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                   {formatDateTime(dialogue.start_ts)}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                  <div className="text-xs">
+                    <div className="font-medium">{dialogue.point_name || (dialogue.point_id ? dialogue.point_id.slice(0, 8) : '—')}</div>
+                    <div className="text-gray-500">{dialogue.register_name || (dialogue.register_id ? dialogue.register_id.slice(0, 8) : '—')}</div>
+                  </div>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                   {getDuration(dialogue.start_ts, dialogue.end_ts)}

@@ -18,7 +18,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import (
@@ -65,7 +65,9 @@ class DeviceResponse(BaseModel):
 
     device_id: UUID
     point_id: UUID
+    point_name: str | None = None
     register_id: UUID
+    register_name: str | None = None
     is_enabled: bool
     created_at: datetime
     last_seen_at: datetime | None
@@ -296,21 +298,36 @@ async def list_devices(
     session: AsyncSession = Depends(get_session),
 ) -> list[DeviceResponse]:
     """List all registered devices."""
-    result = await session.execute(
-        select(Device).order_by(Device.created_at.desc())
-    )
-    devices = result.scalars().all()
+    query = text("""
+        SELECT
+            d.device_id,
+            d.point_id,
+            p.name as point_name,
+            d.register_id,
+            r.name as register_name,
+            d.is_enabled,
+            d.created_at,
+            d.last_seen_at
+        FROM devices d
+        LEFT JOIN points p ON d.point_id = p.point_id
+        LEFT JOIN registers r ON d.register_id = r.register_id
+        ORDER BY d.created_at DESC
+    """)
+    result = await session.execute(query)
+    rows = result.fetchall()
 
     return [
         DeviceResponse(
-            device_id=d.device_id,
-            point_id=d.point_id,
-            register_id=d.register_id,
-            is_enabled=d.is_enabled,
-            created_at=d.created_at,
-            last_seen_at=d.last_seen_at,
+            device_id=row.device_id,
+            point_id=row.point_id,
+            point_name=row.point_name,
+            register_id=row.register_id,
+            register_name=row.register_name,
+            is_enabled=row.is_enabled,
+            created_at=row.created_at,
+            last_seen_at=row.last_seen_at,
         )
-        for d in devices
+        for row in rows
     ]
 
 
@@ -469,3 +486,82 @@ async def download_chunk_file(
             "Content-Length": str(chunk.file_size_bytes),
         },
     )
+
+
+# =============================================================================
+# Points and Registers management
+# =============================================================================
+
+
+class UpdatePointRequest(BaseModel):
+    """Request to update point name."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class UpdateRegisterRequest(BaseModel):
+    """Request to update register name."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+@router.patch(
+    "/api/v1/admin/points/{point_id}",
+    dependencies=[Depends(get_current_user)],
+)
+async def update_point(
+    point_id: UUID,
+    req: UpdatePointRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update point name."""
+    query = text("""
+        UPDATE points
+        SET name = :name
+        WHERE point_id = :point_id
+        RETURNING point_id, name
+    """)
+    result = await session.execute(
+        query, {"point_id": point_id, "name": req.name}
+    )
+    await session.commit()
+
+    row = result.fetchone()
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Point not found",
+        )
+
+    return {"point_id": str(row.point_id), "name": row.name}
+
+
+@router.patch(
+    "/api/v1/admin/registers/{register_id}",
+    dependencies=[Depends(get_current_user)],
+)
+async def update_register(
+    register_id: UUID,
+    req: UpdateRegisterRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update register name."""
+    query = text("""
+        UPDATE registers
+        SET name = :name
+        WHERE register_id = :register_id
+        RETURNING register_id, name
+    """)
+    result = await session.execute(
+        query, {"register_id": register_id, "name": req.name}
+    )
+    await session.commit()
+
+    row = result.fetchone()
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Register not found",
+        )
+
+    return {"register_id": str(row.register_id), "name": row.name}

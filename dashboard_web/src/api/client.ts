@@ -15,6 +15,7 @@ import type {
   UserResponse,
   CreateUserRequest,
   UpdateUserRequest,
+  Device,
 } from './types';
 
 class ApiError extends Error {
@@ -271,6 +272,32 @@ export async function updateUser(
 export async function deleteUser(userId: string): Promise<void> {
   await fetchApi<void>(`/api/v1/users/${userId}`, {
     method: 'DELETE',
+  });
+}
+
+// Device management API functions
+export async function listDevices(): Promise<Device[]> {
+  return fetchApi<Device[]>('/api/v1/admin/devices');
+}
+
+// Points and Registers management
+export async function updatePointName(
+  pointId: string,
+  name: string
+): Promise<{ point_id: string; name: string }> {
+  return fetchApi(`/api/v1/admin/points/${pointId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function updateRegisterName(
+  registerId: string,
+  name: string
+): Promise<{ register_id: string; name: string }> {
+  return fetchApi(`/api/v1/admin/registers/${registerId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
   });
 }
 
